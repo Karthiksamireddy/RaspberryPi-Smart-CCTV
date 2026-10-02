@@ -1,2 +1,2 @@
-# MY_CCTV_PROJECT
-A smart CCTV camera system built using a Raspberry Pi, with live video viewing, automatic detection of people and vehicles, and photo/video recording — accessible from a web page or any standard CCTV viewer.
+# RaspberryPi-Smart-CCTV
+An automated, low-latency multi-camera surveillance system with real-time object detection, web-based live feeds, and authenticated RTSP streaming running natively on Raspberry Pi.
