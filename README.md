@@ -4,12 +4,11 @@ An automated multi-camera surveillance and object detection system built for the
 
 ---
 
-## 📹 Video Demonstration
+## Demo
 
-![System Demo](assets/demo.gif)
+![System Demo](demo.gif)
 
 ---
-
 
 ## Features
 
@@ -23,6 +22,7 @@ An automated multi-camera surveillance and object detection system built for the
   * **HTTP/MJPEG Dashboard:** Access live video feeds, camera switches, and file downloads over an authenticated web interface.
   * **RTSP Feeds:** Pushes low-latency H.264 video streams to MediaMTX via FFmpeg.
 * **Zero-Terminal Boot Operation:** Configured with Linux `systemd` background services to run automatically on power-on without requiring SSH or manual terminal input.
+* **Recordings Storage:** Snapshots and video clips are saved to `~/cctv/recordings/`, browsable and downloadable from the web dashboard's "View saved photos and recordings" page.
 
 ---
 
@@ -49,17 +49,46 @@ An automated multi-camera surveillance and object detection system built for the
 1. Install Raspberry Pi OS using the Raspberry Pi Imager.
 2. Open the terminal on your Raspberry Pi and install the required dependencies:
 
-<pre><code>sudo apt update
-sudo apt install -y python3-opencv python3-flask python3-numpy ffmpeg</code></pre>
+```bash
+sudo apt update
+sudo apt install -y python3-opencv python3-flask python3-numpy ffmpeg
+```
 
-3. Setup MediaMTX RTSP Server:
-Download MediaMTX and configure `~/mediamtx.yml` with internal authentication by adding the following settings:
+3. Download and set up MediaMTX:
 
-<pre><code>authMethod: internal
+```bash
+cd ~
+wget https://github.com/bluenviron/mediamtx/releases/download/v1.21.1/mediamtx_v1.21.1_linux_arm64.tar.gz
+tar -xzf mediamtx_v1.21.1_linux_arm64.tar.gz
+chmod +x ~/mediamtx
+```
+
+4. Download the MobileNet-SSD model files:
+
+```bash
+mkdir -p ~/cctv/models
+cd ~/cctv/models
+wget [fill in your verified prototxt URL] -O MobileNetSSD_deploy.prototxt
+wget [fill in your verified caffemodel URL] -O MobileNetSSD_deploy.caffemodel
+```
+
+Verify both files downloaded correctly:
+
+```bash
+ls -lh ~/cctv/models/
+```
+
+Expected: `MobileNetSSD_deploy.prototxt` (~29 KB) and `MobileNetSSD_deploy.caffemodel` (~22-23 MB).
+
+5. Configure MediaMTX RTSP authentication:
+Edit `~/mediamtx.yml` and add the following settings near the top of the file:
+
+```yaml
+authMethod: internal
 
 authInternalUsers:
-  - user: &lt;YOUR_RTSP_USERNAME&gt;
-    pass: &lt;YOUR_RTSP_PASSWORD&gt;
+  - user: <YOUR_RTSP_USERNAME>
+    pass: <YOUR_RTSP_PASSWORD>
     ips: []
     permissions:
       - action: publish
@@ -67,69 +96,117 @@ authInternalUsers:
       - action: read
         path:
       - action: playback
-        path:</code></pre>
-
-4. Restart MediaMTX to save changes:
-
-<pre><code>sudo systemctl restart mediamtx</code></pre>
+        path:
+```
 
 ---
 
 ## Installation & Usage
 
-1. Clone this repository or copy the Python script `SELF_BUILD_CCTV.py` to your Raspberry Pi:
+1. Clone this repository directly into your home folder as `cctv`:
 
-<pre><code>git clone https://github.com/YOUR_GITHUB_USERNAME/RaspberryPi-Smart-CCTV.git</code></pre>
+```bash
+cd ~
+git clone https://github.com/YOUR_GITHUB_USERNAME/RaspberryPi-Smart-CCTV.git cctv
+```
 
-2. Place the required Caffe model files inside `~/cctv/models/`:
-* `MobileNetSSD_deploy.prototxt`
-* `MobileNetSSD_deploy.caffemodel`
+This places the script at `~/cctv/SELF_BUILD_CCTV.py`, matching the path used in the systemd service below. (Model files from Software Setup step 4 should already be in `~/cctv/models/`.)
 
-3. Edit parameters in `SELF_BUILD_CCTV.py` to set your credentials:
+2. Edit parameters in `SELF_BUILD_CCTV.py` to set your credentials:
 
-<pre><code>PORT = 5000                          # Web interface port
-AUTH_USERNAME = "&lt;YOUR_WEB_USER&gt;"    # Web login username
-AUTH_PASSWORD = "&lt;YOUR_WEB_PASS&gt;"    # Web login password
-RTSP_USERNAME = "&lt;YOUR_RTSP_USER&gt;"   # MediaMTX RTSP username
-RTSP_PASSWORD = "&lt;YOUR_RTSP_PASS&gt;"   # MediaMTX RTSP password</code></pre>
+```python
+PORT = 5000                          # Web interface port
+AUTH_USERNAME = "<YOUR_WEB_USER>"    # Web login username
+AUTH_PASSWORD = "<YOUR_WEB_PASS>"    # Web login password
+RTSP_USERNAME = "<YOUR_RTSP_USER>"   # MediaMTX RTSP username
+RTSP_PASSWORD = "<YOUR_RTSP_PASS>"   # MediaMTX RTSP password
+```
 
-4. Run the script manually to test:
+**Important:** `RTSP_USERNAME`/`RTSP_PASSWORD` here must exactly match the `user`/`pass` values set in `~/mediamtx.yml` in Software Setup step 5, or the script will be unable to publish video to MediaMTX.
 
-<pre><code>python3 SELF_BUILD_CCTV.py 5000</code></pre>
+3. Run MediaMTX, then the script manually to test everything works before setting up auto-boot:
 
-5. Configure Auto-Boot (`systemd`):
-Create `/etc/systemd/system/cctv.service`:
+```bash
+# Terminal 1 - start MediaMTX first
+cd ~
+./mediamtx
 
-<pre><code>[Unit]
-Description=CCTV Multi-Camera Detection and Web Server
-After=network.target mediamtx.service
+# Terminal 2 - then start the camera script
+cd ~/cctv
+python3 SELF_BUILD_CCTV.py 5000
+```
+
+Open `http://<your-pi-ip>:5000` in a browser to confirm the dashboard loads and prompts for login. Test an RTSP stream in VLC at `rtsp://<YOUR_RTSP_USER>:<YOUR_RTSP_PASS>@<your-pi-ip>:8554/stream1`.
+
+4. Configure Auto-Boot (`systemd`):
+
+Create `/etc/systemd/system/mediamtx.service`:
+
+```ini
+[Unit]
+Description=MediaMTX RTSP Server
+After=network-online.target
+Wants=network-online.target
 
 [Service]
-Type=simple
-User=&lt;YOUR_PI_USER&gt;
-WorkingDirectory=/home/&lt;YOUR_PI_USER&gt;/cctv
-ExecStart=/usr/bin/python3 /home/&lt;YOUR_PI_USER&gt;/cctv/SELF_BUILD_CCTV.py 5000
+User=<YOUR_PI_USER>
+WorkingDirectory=/home/<YOUR_PI_USER>
+ExecStart=/home/<YOUR_PI_USER>/mediamtx
 Restart=always
 RestartSec=5
 
 [Install]
-WantedBy=multi-user.target</code></pre>
+WantedBy=multi-user.target
+```
 
-Enable service:
+Create `/etc/systemd/system/cctv.service`:
 
-<pre><code>sudo systemctl daemon-reload
-sudo systemctl enable cctv.service
-sudo systemctl start cctv.service</code></pre>
+```ini
+[Unit]
+Description=CCTV Multi-Camera Detection and Web Server
+After=network.target mediamtx.service
+Requires=mediamtx.service
+
+[Service]
+Type=simple
+User=<YOUR_PI_USER>
+WorkingDirectory=/home/<YOUR_PI_USER>/cctv
+ExecStart=/usr/bin/python3 /home/<YOUR_PI_USER>/cctv/SELF_BUILD_CCTV.py 5000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Enable both services:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now mediamtx
+sudo systemctl enable --now cctv
+```
+
+Verify both are running:
+
+```bash
+sudo systemctl status mediamtx
+sudo systemctl status cctv
+```
+
+Both should show `active (running)`.
 
 ---
 
 ## Troubleshooting
 
-* **Model files missing error:** Verify that `MobileNetSSD_deploy.prototxt` and `MobileNetSSD_deploy.caffemodel` exist inside `~/cctv/models/`.
+* **Model files missing error:** Verify that `MobileNetSSD_deploy.prototxt` and `MobileNetSSD_deploy.caffemodel` exist inside `~/cctv/models/` and have the expected file sizes (see Software Setup step 4).
 * **Camera not found or failed to read frame:** Check USB connections with `ls /dev/video*`. Ensure `CAMERAS` source indices in the script match your connected USB video nodes (`/dev/video0`, `/dev/video2`).
-* **RTSP stream fails to load in VLC:** Verify MediaMTX status with `sudo systemctl status mediamtx`. Ensure RTSP credentials in `SELF_BUILD_CCTV.py` match `~/mediamtx.yml`.
+* **RTSP stream fails to load in VLC:** Verify MediaMTX status with `sudo systemctl status mediamtx`. Ensure RTSP credentials in `SELF_BUILD_CCTV.py` match `~/mediamtx.yml` exactly. In VLC, enable "RTSP TCP mode" under Tools → Preferences → Input/Codecs → Demuxers → RTP/RTSP if the stream fails to open.
 * **Web authentication failed:** Verify HTTP Basic Auth username and password entered in the browser match `AUTH_USERNAME` and `AUTH_PASSWORD` set in `SELF_BUILD_CCTV.py`.
-* **Service crashes on boot:** Check live system logs using `sudo journalctl -u cctv.service -f`.
+* **Service crashes on boot:** Check live system logs using `sudo journalctl -u cctv.service -f` and `sudo journalctl -u mediamtx.service -f`.
+* **Pi's IP address keeps changing:** This is normal when switching networks (DHCP assigns a new address each time). Run `hostname -I` on the Pi to get its current address.
+* **Video feels laggy or frames are delayed in VLC:** Check VLC's network caching setting (Tools → Preferences → Input/Codecs → Demuxers → RTP/RTSP → Network caching), and confirm the Pi isn't under-voltage with `vcgencmd get_throttled` (expect `throttled=0x0`).
 
 ---
 
@@ -140,8 +217,6 @@ sudo systemctl start cctv.service</code></pre>
 | 100% local processing; no internet connection required | High CPU usage on Raspberry Pi during multi-stream detection |
 | Zero API fees or usage limits | Frame rate limited to ~15 FPS for stability |
 | Dual HTTP and RTSP streaming support | MobileNet-SSD accuracy depends on ambient lighting conditions |
-| Automated head-less startup on power-on | Requires physical USB connection for cameras |
-| Built-in web dashboard for manual recording & snapshots | Storage capacity constrained by MicroSD size |
-
-
-
+| Automated headless startup on power-on | Requires physical USB connection for cameras |
+| Built-in web dashboard for manual recording & snapshots | Storage capacity constrained by MicroSD card size |
+| Compatible with VLC and RTSP-capable NVR software | No ONVIF support — auto-discovery by NVR software not supported; manual RTSP URL entry only |
