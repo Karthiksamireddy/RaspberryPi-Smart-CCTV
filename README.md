@@ -1,6 +1,6 @@
 # RaspberryPi-Smart-CCTV
 
-An automated multi-camera surveillance and object detection system built for the Raspberry Pi. This project implements localized object detection, live web management, snapshots, MP4 recording, and authenticated RTSP streaming without relying on external cloud APIs. Powered by a local MobileNet-SSD Caffe model, MediaMTX, and FFmpeg, the system runs completely headlessly on startup using systemd background services.
+An automated multi-camera surveillance and object detection system built for the Raspberry Pi, using standard USB webcams instead of dedicated IP cameras. The system performs real-time, on-device detection of people and vehicles (cars, buses, motorbikes, bicycles) using a local MobileNet-SSD Caffe model — no internet connection or external cloud API required. It provides a live authenticated web dashboard for viewing, manual snapshots, and MP4 recording, alongside standard authenticated RTSP streaming (via MediaMTX and FFmpeg) for compatibility with VLC and RTSP-capable. The entire system runs headlessly, starting automatically on power-on via systemd background services, requiring no manual terminal input after initial setup.
 
 ---
 
