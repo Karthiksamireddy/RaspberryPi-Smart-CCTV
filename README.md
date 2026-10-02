@@ -6,8 +6,6 @@ An automated multi-camera surveillance and object detection system built for the
 
 ## 📹 Video Demonstration
 
-Check out the 37-second demonstration showing real-time multi-camera detection, web controller actions, and live streaming:
-
 ![System Demo](assets/demo.gif)
 
 ---
